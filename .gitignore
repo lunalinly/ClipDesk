@@ -5,6 +5,8 @@ open-source/
 *.log
 *.user
 *.suo
+*.pfx
+*.p12
 *.json.bak
 *.backup.json
 data.json

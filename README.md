@@ -254,6 +254,7 @@ assets/clipdesk-icon.png    圖示高解析度來源圖
 installer/ClipDesk.nsi      完整版 NSIS 安裝腳本
 installer/ClipDesk.Clipboard.nsi  純剪貼簿版 NSIS 安裝腳本
 build-native.ps1            一鍵建置腳本
+sign-windows.ps1            Authenticode 自動簽章與驗證腳本
 .github/workflows/          GitHub Actions 自動建置
 ```
 
@@ -283,6 +284,25 @@ ClipDesk-Clipboard-Setup-1.3.0-x64.exe
 ```
 
 如果沒有安裝 NSIS，腳本仍會建立免安裝版，並略過安裝版。
+## 自動程式碼簽章
+
+`build-native.ps1` 會在建立安裝程式前簽署免安裝 EXE，完成安裝程式後再簽署 Setup EXE。沒有設定憑證時會略過簽章；使用 `-RequireSigning` 可要求缺少憑證時直接停止建置。
+
+本機可使用憑證存放區中的核准憑證：
+
+```powershell
+$env:CLIPDESK_SIGNING_CERT_THUMBPRINT = "憑證指紋"
+$env:CLIPDESK_SIGNING_CERT_STORE = "CurrentUser"
+.\build-native.ps1 -RequireSigning
+```
+
+GitHub Actions 請在 Repository settings → Secrets and variables → Actions 新增：
+
+- `CLIPDESK_SIGNING_CERT_BASE64`：PFX 檔案的 Base64 內容
+- `CLIPDESK_SIGNING_CERT_PASSWORD`：PFX 密碼
+- 選用變數 `CLIPDESK_TIMESTAMP_URL`：RFC 3161 時間戳服務；未設定時使用 DigiCert
+
+憑證與密碼不可提交到 Git。Fork 或沒有 Secrets 的建置會保留原本的未簽章行為；設定 Secrets 後，四個公開版產出會自動簽章並驗證。
 
 ## 參與開發
 
