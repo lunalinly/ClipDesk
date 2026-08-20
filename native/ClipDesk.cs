@@ -15,11 +15,11 @@ using System.Windows.Forms;
 [assembly: AssemblyCompany("ClipDesk")]
 [assembly: AssemblyProduct("ClipDesk")]
 #if PURPLE_THEME
-[assembly: AssemblyVersion("1.8.0.0")]
-[assembly: AssemblyFileVersion("1.8.0.0")]
+[assembly: AssemblyVersion("1.9.0.0")]
+[assembly: AssemblyFileVersion("1.9.0.0")]
 #else
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 #endif
 
 namespace ClipDeskNative {
@@ -92,7 +92,7 @@ namespace ClipDeskNative {
     readonly JavaScriptSerializer serializer = new JavaScriptSerializer();
     readonly List<ClipItem> items = new List<ClipItem>();
     readonly List<ClipItem> shown = new List<ClipItem>();
-    readonly List<string> categories = new List<string> { "開頭", "中間", "結尾", "未分類", "其他" };
+    readonly List<string> categories = new List<string>();
     readonly ListBox clipList = new ListBox();
     readonly TreeView categoryTree = new TreeView();
     readonly Panel categoryPanel = new Panel();
@@ -413,7 +413,7 @@ namespace ClipDeskNative {
       categoryTree.MouseMove += ShowCategoryTooltip;
       categoryTree.MouseLeave += delegate { hoverCategoryNode = null; hoverTip.Hide(categoryTree); };
       ContextMenuStrip categoryMenu = new ContextMenuStrip();
-      categoryMenu.Items.Add("新增子分類", null, delegate { AddCategory(); });
+      categoryMenu.Items.Add("新增分類", null, delegate { AddCategory(); });
       categoryMenu.Items.Add("重新命名", null, delegate { RenameCategory(); });
       categoryMenu.Items.Add("刪除分類", null, delegate { DeleteCategory(); });
       categoryMenu.Items.Add(new ToolStripSeparator());
@@ -431,7 +431,7 @@ namespace ClipDeskNative {
       categoryActions.Height = 70;
       categoryActions.Padding = new Padding(0, 3, 0, 0);
       categoryActions.WrapContents = true;
-      categoryActions.Controls.Add(FlatButton("＋子分類", delegate { AddCategory(); }));
+      categoryActions.Controls.Add(FlatButton("＋分類", delegate { AddCategory(); }));
       categoryActions.Controls.Add(FlatButton("改名", delegate { RenameCategory(); }));
       categoryActions.Controls.Add(FlatButton("↑", delegate { MoveCategory(-1); }));
       categoryActions.Controls.Add(FlatButton("↓", delegate { MoveCategory(1); }));
@@ -545,8 +545,8 @@ namespace ClipDeskNative {
     }
 #endif
 
-    bool IsFixedCategory(string path) {
-      return path == "開頭" || path == "中間" || path == "結尾" || path == "未分類" || path == "其他";
+    bool IsProtectedCategory(string path) {
+      return path == "未分類";
     }
 
     string CleanCategoryName(string value) {
@@ -562,15 +562,15 @@ namespace ClipDeskNative {
       all.Tag = "全部";
       categoryTree.Nodes.Add(all);
       Dictionary<string, TreeNode> map = new Dictionary<string, TreeNode>();
-      foreach (string root in new [] { "開頭", "中間", "結尾", "未分類", "其他" }) {
-        if (!categories.Contains(root)) categories.Add(root);
+      if (!categories.Contains("未分類")) categories.Add("未分類");
+      foreach (string root in categories.Distinct().Where(path => !String.IsNullOrWhiteSpace(path) && path.IndexOf('/') < 0)) {
         TreeNode node = new TreeNode(root);
         node.Tag = root;
         categoryTree.Nodes.Add(node);
         map[root] = node;
       }
       foreach (string path in categories.Distinct()) {
-        if (IsFixedCategory(path)) continue;
+        if (String.IsNullOrWhiteSpace(path) || path.IndexOf('/') < 0) continue;
         string[] parts = path.Split('/');
         if (parts.Length < 2 || !map.ContainsKey(parts[0])) continue;
         string built = parts[0];
@@ -605,6 +605,8 @@ namespace ClipDeskNative {
     }
 
     List<string> DirectCategoryChildren(string parent) {
+      if (String.IsNullOrEmpty(parent))
+        return categories.Distinct().Where(path => !String.IsNullOrWhiteSpace(path) && path.IndexOf('/') < 0).ToList();
       string prefix = parent + "/";
       return categories.Distinct().Where(path => {
         if (String.IsNullOrWhiteSpace(path) || !path.StartsWith(prefix, StringComparison.Ordinal)) return false;
@@ -612,12 +614,23 @@ namespace ClipDeskNative {
       }).ToList();
     }
 
+    void AppendOrderedCategoryPaths(string parent, List<string> result) {
+      foreach (string child in DirectCategoryChildren(parent)) {
+        result.Add(child);
+        AppendOrderedCategoryPaths(child, result);
+      }
+    }
+
+    List<string> OrderedCategoryPaths() {
+      List<string> result = new List<string>();
+      AppendOrderedCategoryPaths("", result);
+      return result;
+    }
     bool CanMoveCategory(int direction) {
       string path = selectedCategory;
-      if (path == "全部" || IsFixedCategory(path) || String.IsNullOrWhiteSpace(path)) return false;
+      if (path == "全部" || String.IsNullOrWhiteSpace(path)) return false;
       int separator = path.LastIndexOf('/');
-      if (separator <= 0) return false;
-      string parent = path.Substring(0, separator);
+      string parent = separator < 0 ? "" : path.Substring(0, separator);
       List<string> siblings = DirectCategoryChildren(parent);
       int index = siblings.IndexOf(path);
       int target = index + direction;
@@ -627,7 +640,8 @@ namespace ClipDeskNative {
     void MoveCategory(int direction) {
       if (!CanMoveCategory(direction)) return;
       string path = selectedCategory;
-      string parent = path.Substring(0, path.LastIndexOf('/'));
+      int separator = path.LastIndexOf('/');
+      string parent = separator < 0 ? "" : path.Substring(0, separator);
       List<string> siblings = DirectCategoryChildren(parent);
       int siblingIndex = siblings.IndexOf(path);
       string targetPath = siblings[siblingIndex + direction];
@@ -689,17 +703,18 @@ namespace ClipDeskNative {
 
     void AddCategory() {
       string parent = selectedCategory;
-      if (parent == "全部") {
-        MessageBox.Show(this, "請先選擇一個主要分類或母分類。", "ClipDesk");
-        return;
-      }
       if (parent == "未分類") {
-        MessageBox.Show(this, "「未分類」用來暫放剛複製的內容，不能建立子分類。請改用「其他」或其餘主要分類。", "ClipDesk");
+        MessageBox.Show(this, "「未分類」用來暫放剛複製的內容，不能建立子分類。請選擇「全部」新增大分類，或選擇其他分類新增子分類。", "ClipDesk");
         return;
       }
-      string name = PromptText("新增子分類", "在「" + parent + "」下新增：", "");
+      bool addRoot = parent == "全部";
+      string name = PromptText(addRoot ? "新增大分類" : "新增子分類", addRoot ? "新的大分類名稱：" : "在「" + parent + "」下新增：", "");
       if (String.IsNullOrWhiteSpace(name)) return;
-      string path = parent + "/" + name;
+      if (name == "全部") {
+        MessageBox.Show(this, "「全部」是系統保留名稱，請使用其他名稱。", "ClipDesk");
+        return;
+      }
+      string path = addRoot ? name : parent + "/" + name;
       if (categories.Contains(path)) {
         MessageBox.Show(this, "這個分類已經存在。", "ClipDesk");
         return;
@@ -708,20 +723,26 @@ namespace ClipDeskNative {
       selectedCategory = path;
       SaveData();
       RebuildCategoryTree();
+      TreeNode selected = FindCategoryNode(categoryTree.Nodes, path);
+      if (selected != null) { categoryTree.SelectedNode = selected; selected.EnsureVisible(); }
       RefreshList();
     }
 
     void RenameCategory() {
       string oldPath = selectedCategory;
-      if (oldPath == "全部" || IsFixedCategory(oldPath)) {
-        MessageBox.Show(this, "固定主分類不能重新命名。", "ClipDesk");
+      if (oldPath == "全部" || IsProtectedCategory(oldPath)) {
+        MessageBox.Show(this, "「全部」與「未分類」不能重新命名。", "ClipDesk");
         return;
       }
       string[] parts = oldPath.Split('/');
       string name = PromptText("重新命名", "新的分類名稱：", parts[parts.Length - 1]);
       if (String.IsNullOrWhiteSpace(name)) return;
+      if (name == "全部") {
+        MessageBox.Show(this, "「全部」是系統保留名稱，請使用其他名稱。", "ClipDesk");
+        return;
+      }
       string parent = String.Join("/", parts.Take(parts.Length - 1).ToArray());
-      string newPath = parent + "/" + name;
+      string newPath = parent.Length == 0 ? name : parent + "/" + name;
       if (newPath != oldPath && categories.Contains(newPath)) {
         MessageBox.Show(this, "這個分類已經存在。", "ClipDesk");
         return;
@@ -738,6 +759,8 @@ namespace ClipDeskNative {
       selectedCategory = newPath;
       SaveData();
       RebuildCategoryTree();
+      TreeNode selected = FindCategoryNode(categoryTree.Nodes, newPath);
+      if (selected != null) { categoryTree.SelectedNode = selected; selected.EnsureVisible(); }
       RefreshList();
     }
 
@@ -755,18 +778,19 @@ namespace ClipDeskNative {
 
     void DeleteCategory() {
       string path = selectedCategory;
-      if (path == "全部" || IsFixedCategory(path)) {
-        MessageBox.Show(this, "固定主分類不能刪除。", "ClipDesk");
+      if (path == "全部" || IsProtectedCategory(path)) {
+        MessageBox.Show(this, "「全部」與「未分類」不能刪除。", "ClipDesk");
         return;
       }
-      if (MessageBox.Show(this, "會一起刪除所有下層分類，內容將移回主分類。確定繼續？", "ClipDesk", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-      string root = path.Split('/')[0];
+      int separator = path.LastIndexOf('/');
+      string destination = separator < 0 ? "未分類" : path.Substring(0, separator);
+      if (MessageBox.Show(this, "會一起刪除所有下層分類，內容將移到「" + destination + "」。確定繼續？", "ClipDesk", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
       categories.RemoveAll(x => x == path || x.StartsWith(path + "/"));
       foreach (ClipItem item in items) {
         string itemPath = item.CategoryPath ?? "未分類";
-        if (itemPath == path || itemPath.StartsWith(path + "/")) item.CategoryPath = root;
+        if (itemPath == path || itemPath.StartsWith(path + "/")) item.CategoryPath = destination;
       }
-      selectedCategory = root;
+      selectedCategory = destination;
       SaveData();
       RebuildCategoryTree();
       RefreshList();
@@ -1013,6 +1037,11 @@ namespace ClipDeskNative {
           TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
     }
 
+    string CategoryDisplayPath(string path) {
+      string normalized = String.IsNullOrWhiteSpace(path) ? "未分類" : path;
+      string[] parts = normalized.Split(new [] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+      return parts.Length == 0 ? "未分類" : String.Join(" › ", parts);
+    }
     string WrapTooltipText(string text, int width) {
       string normalized = (text ?? "").Replace("\r\n", "\n").Replace("\r", "\n");
       List<string> wrapped = new List<string>();
@@ -1039,9 +1068,7 @@ namespace ClipDeskNative {
       ClipItem item = shown[index];
       string value = (item.Text ?? "").Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
       Size measured = TextRenderer.MeasureText(value, Font, new Size(availableWidth, Int32.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
-      string path = String.IsNullOrWhiteSpace(item.CategoryPath) ? "未分類" : item.CategoryPath;
-      string[] parts = path.Split(new [] { "/" }, StringSplitOptions.RemoveEmptyEntries);
-      string category = (item.Pinned ? "◆  " : "") + (parts.Length == 0 ? "未分類" : parts[parts.Length - 1]);
+      string category = (item.Pinned ? "◆  " : "") + CategoryDisplayPath(item.CategoryPath);
       using (Font badge = new Font(Font.FontFamily, 8F, FontStyle.Bold))
         categoryTruncated = TextRenderer.MeasureText(category, badge, new Size(Int32.MaxValue, 16), TextFormatFlags.NoPadding).Width > availableWidth;
       return measured.Height > availableHeight || measured.Width > availableWidth;
@@ -1058,7 +1085,7 @@ namespace ClipDeskNative {
       if (!textTruncated && !categoryTruncated) return;
       ClipItem item = shown[index];
       string tip = "";
-      if (categoryTruncated) tip = "分類：" + (String.IsNullOrWhiteSpace(item.CategoryPath) ? "未分類" : item.CategoryPath);
+      if (categoryTruncated) tip = "分類：" + CategoryDisplayPath(item.CategoryPath);
       if (textTruncated) tip += (tip.Length > 0 ? Environment.NewLine + Environment.NewLine : "") + (item.Text ?? "");
       hoverTip.Show(WrapTooltipText(tip, 48), clipList, e.X + 14, e.Y + 18, 30000);
     }
@@ -1088,10 +1115,7 @@ namespace ClipDeskNative {
       using (Font small = new Font(Font.FontFamily, 8F, FontStyle.Bold))
         TextRenderer.DrawText(e.Graphics, (e.Index + 1).ToString(), small, numberRect, selected ? Color.White : Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
 
-      string path = String.IsNullOrWhiteSpace(item.CategoryPath) ? "未分類" : item.CategoryPath;
-      string[] categoryParts = path.Split(new [] { "/" }, StringSplitOptions.RemoveEmptyEntries);
-      string category = categoryParts.Length == 0 ? "未分類" : categoryParts[categoryParts.Length - 1];
-      string categoryText = (item.Pinned ? "◆  " : "") + category;
+      string categoryText = (item.Pinned ? "◆  " : "") + CategoryDisplayPath(item.CategoryPath);
       Rectangle categoryRect = new Rectangle(e.Bounds.X + 29, e.Bounds.Y + 3, Math.Max(4, e.Bounds.Width - 36), 16);
       using (Font badge = new Font(Font.FontFamily, 8F, FontStyle.Bold))
         TextRenderer.DrawText(e.Graphics, categoryText, badge, categoryRect, selected ? AccentText : Accent, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
@@ -1226,7 +1250,7 @@ namespace ClipDeskNative {
         category.DropDownStyle = ComboBoxStyle.DropDownList;
         category.BackColor = Row;
         category.ForeColor = TextColor;
-        foreach (string path in categories.Distinct()) category.Items.Add(path);
+        foreach (string path in OrderedCategoryPaths()) category.Items.Add(path);
         string currentCategory = item == null || String.IsNullOrWhiteSpace(item.CategoryPath) ? "未分類" : item.CategoryPath;
         category.SelectedItem = currentCategory;
         if (category.SelectedIndex < 0) category.SelectedItem = "未分類";
@@ -1319,13 +1343,13 @@ namespace ClipDeskNative {
       if (path.Length == 0) return "未分類";
       string[] rawParts = path.Split(new [] { '/' }, StringSplitOptions.RemoveEmptyEntries);
       if (rawParts.Length == 0) return "未分類";
-      string root = rawParts[0].Trim();
-      if (!new [] { "開頭", "中間", "結尾", "未分類", "其他" }.Contains(root)) return "未分類";
+      string root = CleanCategoryName(rawParts[0]);
+      if (root.Length == 0 || root == "全部") return "未分類";
       if (root == "未分類" || rawParts.Length == 1) return root;
       List<string> parts = new List<string> { root };
       for (int i = 1; i < rawParts.Length; i++) {
         string part = CleanCategoryName(rawParts[i]);
-        if (part.Length > 0) parts.Add(part);
+        if (part.Length > 0 && part != "全部") parts.Add(part);
       }
       return String.Join("/", parts);
     }
@@ -1390,10 +1414,11 @@ namespace ClipDeskNative {
           items.Clear();
           items.AddRange(importedItems);
           categories.Clear();
-          categories.AddRange(new [] { "開頭", "中間", "結尾", "未分類", "其他" });
           foreach (string path in data.Categories ?? new List<string>())
             AddCategoryWithParents(NormalizeImportedCategory(path));
           foreach (ClipItem item in items) AddCategoryWithParents(item.CategoryPath);
+          if (categories.Count == 0) categories.AddRange(new [] { "開頭", "中間", "結尾", "未分類", "其他" });
+          if (!categories.Contains("未分類")) categories.Add("未分類");
           settings = data.Settings ?? Defaults();
           staffName.Text = settings.StaffName ?? "";
           workStart.Text = settings.WorkStart ?? "10:00";
@@ -1419,14 +1444,20 @@ namespace ClipDeskNative {
           StoreData data = serializer.Deserialize<StoreData>(File.ReadAllText(dataFile));
           if (data != null && data.Items != null) items.AddRange(data.Items.Where(x => x != null && !String.IsNullOrEmpty(x.Text)));
           if (data != null && data.Settings != null) settings = data.Settings;
-          if (data != null && data.Categories != null) categories.AddRange(data.Categories);
+          if (data != null && data.Categories != null)
+            foreach (string path in data.Categories) AddCategoryWithParents(NormalizeImportedCategory(path));
         }
       } catch { }
-      foreach (ClipItem item in items) if (String.IsNullOrWhiteSpace(item.CategoryPath)) item.CategoryPath = "未分類";
-      categories.RemoveAll(x => String.IsNullOrWhiteSpace(x));
+      foreach (ClipItem item in items) {
+        item.CategoryPath = NormalizeImportedCategory(item.CategoryPath);
+        AddCategoryWithParents(item.CategoryPath);
+      }
+      categories.RemoveAll(x => String.IsNullOrWhiteSpace(x) || x == "全部");
       List<string> uniqueCategories = categories.Distinct().ToList();
       categories.Clear();
       categories.AddRange(uniqueCategories);
+      if (categories.Count == 0) categories.AddRange(new [] { "開頭", "中間", "結尾", "未分類", "其他" });
+      if (!categories.Contains("未分類")) categories.Add("未分類");
       staffName.Text = settings.StaffName ?? "";
       workStart.Text = settings.WorkStart ?? "10:00";
       restStart.Text = settings.RestStart ?? "13:00";

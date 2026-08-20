@@ -7,7 +7,7 @@ $projectRoot = $PSScriptRoot
 $distDir = Join-Path $projectRoot "dist"
 $sourceFile = Join-Path $projectRoot "native\ClipDesk.cs"
 $compiler = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-$portableExe = Join-Path $distDir "ClipDesk-Portable-1.1.0-x64.exe"
+$portableExe = Join-Path $distDir "ClipDesk-Portable-1.2.0-x64.exe"
 
 if (-not (Test-Path -LiteralPath $compiler)) {
   throw "找不到 .NET Framework C# 編譯器：$compiler"
@@ -55,4 +55,4 @@ try {
   Pop-Location
 }
 
-Write-Host "已建立安裝版：$(Join-Path $distDir 'ClipDesk-Setup-1.1.0-x64.exe')"
+Write-Host "已建立安裝版：$(Join-Path $distDir 'ClipDesk-Setup-1.2.0-x64.exe')"
