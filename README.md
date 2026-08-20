@@ -21,8 +21,8 @@ ClipDesk 是一款開源、輕量、以本機資料為主的 Windows 剪貼簿�
 
 請到 GitHub Releases 下載：
 
-- `ClipDesk-Portable-1.0.0-x64.zip`：免安裝版
-- `ClipDesk-Setup-1.0.0-x64.exe`：安裝版
+- `ClipDesk-Portable-1.0.1-x64.zip`：免安裝版
+- `ClipDesk-Setup-1.0.1-x64.exe`：安裝版
 
 支援 64 位元 Windows。若目標程式以系統管理員身分執行，ClipDesk 也必須以系統管理員身分執行，才能自動貼上。
 
@@ -54,8 +54,8 @@ build-native.ps1            一鍵建置腳本
 建置結果會放在 `dist`：
 
 ```text
-ClipDesk-Portable-1.0.0-x64.exe
-ClipDesk-Setup-1.0.0-x64.exe
+ClipDesk-Portable-1.0.1-x64.exe
+ClipDesk-Setup-1.0.1-x64.exe
 ```
 
 如果沒有安裝 NSIS，腳本仍會成功建立免安裝版，並略過安裝版。
