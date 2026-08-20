@@ -12,8 +12,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Lightweight Windows clipboard manager")]
 [assembly: AssemblyCompany("ClipDesk")]
 [assembly: AssemblyProduct("ClipDesk")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 
 namespace ClipDeskNative {
   public class ClipItem {
@@ -357,6 +357,7 @@ namespace ClipDeskNative {
       categoryTree.BorderStyle = BorderStyle.None;
       categoryTree.DrawMode = TreeViewDrawMode.OwnerDrawAll;
       categoryTree.ItemHeight = 24;
+      categoryTree.Indent = 18;
       categoryTree.ShowLines = false;
       categoryTree.ShowRootLines = true;
       categoryTree.ShowPlusMinus = false;
@@ -804,21 +805,43 @@ namespace ClipDeskNative {
       if (selected) using (SolidBrush line = new SolidBrush(Accent)) e.Graphics.FillRectangle(line, rect.Left + 12, rect.Bottom - 3, rect.Width - 24, 3);
     }
 
+    int CategoryNodeTextX(TreeNode node) {
+      return 24 + Math.Max(0, node == null ? 0 : node.Level) * 18;
+    }
+
     void DrawCategoryNode(object sender, DrawTreeNodeEventArgs e) {
       bool selected = (e.State & TreeNodeStates.Selected) != 0;
       Rectangle row = new Rectangle(0, e.Bounds.Y, Math.Max(1, categoryTree.ClientSize.Width), e.Bounds.Height);
       using (SolidBrush bg = new SolidBrush(selected ? AccentSoft : Surface)) e.Graphics.FillRectangle(bg, row);
-      Color color = selected ? Color.White : TextColor;
-      Rectangle textBounds = new Rectangle(e.Bounds.X, e.Bounds.Y, Math.Max(4, categoryTree.ClientSize.Width - e.Bounds.X - 8), e.Bounds.Height);
+
+      int level = Math.Max(0, e.Node.Level);
+      int branchX = 6 + level * 18;
+      int middleY = e.Bounds.Y + e.Bounds.Height / 2;
+      using (Pen guide = new Pen(selected ? AccentText : Divider)) {
+        for (int i = 0; i < level; i++) {
+          int lineX = 12 + i * 18;
+          e.Graphics.DrawLine(guide, lineX, e.Bounds.Top, lineX, e.Bounds.Bottom);
+        }
+        if (level > 0) e.Graphics.DrawLine(guide, branchX - 12, middleY, branchX + 5, middleY);
+      }
+
+      Rectangle glyph = new Rectangle(branchX, e.Bounds.Y + 5, 12, 12);
       if (e.Node.Nodes.Count > 0) {
-        Rectangle glyph = new Rectangle(Math.Max(3, e.Bounds.X - 17), e.Bounds.Y + 5, 12, 12);
         using (SolidBrush glyphBg = new SolidBrush(selected ? Accent : ButtonColor)) e.Graphics.FillRectangle(glyphBg, glyph);
         using (Font glyphFont = new Font("Segoe UI", 8F, FontStyle.Bold))
           TextRenderer.DrawText(e.Graphics, e.Node.IsExpanded ? "−" : "+", glyphFont, glyph, Color.White,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+      } else if (level > 0) {
+        Rectangle dot = new Rectangle(branchX + 4, middleY - 2, 4, 4);
+        using (SolidBrush dotBrush = new SolidBrush(selected ? AccentText : Muted)) e.Graphics.FillRectangle(dotBrush, dot);
       }
+
+      int textX = CategoryNodeTextX(e.Node);
+      Color color = selected ? Color.White : TextColor;
+      Rectangle textBounds = new Rectangle(textX, e.Bounds.Y, Math.Max(4, categoryTree.ClientSize.Width - textX - 8), e.Bounds.Height);
       using (Font nodeFont = new Font(Font.FontFamily, 9F, selected ? FontStyle.Bold : FontStyle.Regular))
-        TextRenderer.DrawText(e.Graphics, e.Node.Text, nodeFont, textBounds, color, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+        TextRenderer.DrawText(e.Graphics, e.Node.Text, nodeFont, textBounds, color,
+          TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
     }
 
     string WrapTooltipText(string text, int width) {
@@ -877,7 +900,7 @@ namespace ClipDeskNative {
       hoverCategoryNode = node;
       hoverTip.Hide(categoryTree);
       if (node == null) return;
-      int availableWidth = Math.Max(1, categoryTree.ClientSize.Width - node.Bounds.X - 6);
+      int availableWidth = Math.Max(1, categoryTree.ClientSize.Width - CategoryNodeTextX(node) - 8);
       int measuredWidth = TextRenderer.MeasureText(node.Text, categoryTree.Font, new Size(Int32.MaxValue, node.Bounds.Height), TextFormatFlags.NoPadding).Width;
       if (measuredWidth <= availableWidth) return;
       string fullPath = node.Tag == null ? node.Text : node.Tag.ToString();
