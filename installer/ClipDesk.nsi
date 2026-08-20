@@ -1,6 +1,8 @@
 ﻿Unicode true
 Name "ClipDesk"
-OutFile "..\dist\ClipDesk-Setup-1.2.0-x64.exe"
+OutFile "..\dist\ClipDesk-Setup-1.3.0-x64.exe"
+Icon "..\assets\clipdesk.ico"
+UninstallIcon "..\assets\clipdesk.ico"
 InstallDir "$LOCALAPPDATA\Programs\ClipDesk"
 InstallDirRegKey HKCU "Software\ClipDesk" "InstallDir"
 RequestExecutionLevel user
@@ -14,11 +16,11 @@ UninstPage instfiles
 
 Section "ClipDesk" SEC_MAIN
   SetOutPath "$INSTDIR"
-  File /oname=ClipDesk.exe "..\dist\ClipDesk-Portable-1.2.0-x64.exe"
+  File /oname=ClipDesk.exe "..\dist\ClipDesk-Portable-1.3.0-x64.exe"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "Software\ClipDesk" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ClipDesk" "DisplayName" "ClipDesk"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ClipDesk" "DisplayVersion" "1.2.0"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ClipDesk" "DisplayVersion" "1.3.0"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ClipDesk" "Publisher" "ClipDesk"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ClipDesk" "UninstallString" "$\"$INSTDIR\Uninstall.exe$\""
   CreateDirectory "$SMPROGRAMS\ClipDesk"

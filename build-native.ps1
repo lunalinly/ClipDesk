@@ -6,30 +6,41 @@ $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 $distDir = Join-Path $projectRoot "dist"
 $sourceFile = Join-Path $projectRoot "native\ClipDesk.cs"
+$iconFile = Join-Path $projectRoot "assets\clipdesk.ico"
 $compiler = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-$portableExe = Join-Path $distDir "ClipDesk-Portable-1.2.0-x64.exe"
+$version = "1.3.0"
+$fullPortableExe = Join-Path $distDir "ClipDesk-Portable-$version-x64.exe"
+$clipboardPortableExe = Join-Path $distDir "ClipDesk-Clipboard-Portable-$version-x64.exe"
 
 if (-not (Test-Path -LiteralPath $compiler)) {
   throw "找不到 .NET Framework C# 編譯器：$compiler"
 }
+if (-not (Test-Path -LiteralPath $iconFile)) {
+  throw "找不到應用程式圖示：$iconFile"
+}
 
 New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 
-$compilerArgs = @(
-  "/nologo",
-  "/target:winexe",
-  "/optimize+",
-  "/define:PUBLIC_RELEASE,CUSTOM_CHROME",
-  "/out:$portableExe",
-  "/reference:System.Windows.Forms.dll",
-  "/reference:System.Drawing.dll",
-  "/reference:System.Web.Extensions.dll",
-  $sourceFile
-)
+function Build-Portable([string]$outputPath, [string]$defines) {
+  $compilerArgs = @(
+    "/nologo",
+    "/target:winexe",
+    "/optimize+",
+    "/win32icon:$iconFile",
+    "/define:$defines",
+    "/out:$outputPath",
+    "/reference:System.Windows.Forms.dll",
+    "/reference:System.Drawing.dll",
+    "/reference:System.Web.Extensions.dll",
+    $sourceFile
+  )
+  & $compiler @compilerArgs
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  Write-Host "已建立免安裝版：$outputPath"
+}
 
-& $compiler @compilerArgs
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-Write-Host "已建立免安裝版：$portableExe"
+Build-Portable $fullPortableExe "PUBLIC_RELEASE,CUSTOM_CHROME"
+Build-Portable $clipboardPortableExe "PUBLIC_RELEASE,CUSTOM_CHROME,CLIPBOARD_ONLY"
 
 if ($SkipInstaller) { exit 0 }
 
@@ -43,16 +54,19 @@ if (-not $makeNsis) {
 }
 
 if (-not $makeNsis) {
-  Write-Warning "找不到 NSIS；免安裝版已完成，安裝版已略過。"
+  Write-Warning "找不到 NSIS；兩個免安裝版已完成，安裝版已略過。"
   exit 0
 }
 
 Push-Location (Join-Path $projectRoot "installer")
 try {
-  & $makeNsis "/V2" "ClipDesk.nsi"
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  foreach ($script in @("ClipDesk.nsi", "ClipDesk.Clipboard.nsi")) {
+    & $makeNsis "/V2" $script
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  }
 } finally {
   Pop-Location
 }
 
-Write-Host "已建立安裝版：$(Join-Path $distDir 'ClipDesk-Setup-1.2.0-x64.exe')"
+Write-Host "已建立安裝版：$(Join-Path $distDir "ClipDesk-Setup-$version-x64.exe")"
+Write-Host "已建立安裝版：$(Join-Path $distDir "ClipDesk-Clipboard-Setup-$version-x64.exe")"

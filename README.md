@@ -1,5 +1,7 @@
 # ClipDesk
 
+<p align="center"><img src="assets/clipdesk-icon.png" width="128" alt="ClipDesk 應用程式圖示"></p>
+
 ClipDesk 是一款開源、輕量、資料保存在本機的 Windows 剪貼簿管理工具。它適合維持小視窗、置頂使用，能自動收集複製的文字、建立不限層數的分類，也包含上下班與休息通知文字產生器。
 
 ![公開版介面](docs/preview.png)
@@ -23,8 +25,10 @@ ClipDesk 是一款開源、輕量、資料保存在本機的 Windows 剪貼簿�
 
 | 版本 | 檔案 | 使用方式 |
 | --- | --- | --- |
-| 免安裝版 | `ClipDesk-Portable-1.2.0-x64.zip` | 解壓縮後執行 `ClipDesk.exe` |
-| 安裝版 | `ClipDesk-Setup-1.2.0-x64.exe` | 執行安裝程式，依畫面完成安裝 |
+| 完整版・免安裝 | `ClipDesk-Portable-1.3.0-x64.zip` | 剪貼簿＋出勤通知；解壓縮後執行 `ClipDesk.exe` |
+| 完整版・安裝 | `ClipDesk-Setup-1.3.0-x64.exe` | 剪貼簿＋出勤通知；執行安裝程式 |
+| 純剪貼簿版・免安裝 | `ClipDesk-Clipboard-Portable-1.3.0-x64.zip` | 只有剪貼簿；解壓縮後執行 `ClipDesk-Clipboard.exe` |
+| 純剪貼簿版・安裝 | `ClipDesk-Clipboard-Setup-1.3.0-x64.exe` | 只有剪貼簿；可與完整版並存安裝 |
 
 請勿直接在 ZIP 壓縮檔內執行免安裝版，應先解壓縮到一般資料夾。如果 Windows 顯示安全性提醒，請先確認檔案確實下載自本專案的 Releases 頁面，再決定是否執行。
 
@@ -55,8 +59,10 @@ ClipDesk 只會自動收集純文字。再次複製完全相同的文字時，�
 
 ### 功能分頁
 
+純剪貼簿版不會顯示「出勤通知」分頁，其餘剪貼簿、分類、備份與更新功能和完整版相同。
+
 - `剪貼簿`：查看、搜尋及使用已保存的文字。
-- `出勤通知`：產生上班、休息與下班通知文字。
+- `出勤通知`：產生上班、休息與下班通知文字（僅完整版）。
 - `備份`：匯出備份、匯入備份及手動檢查更新。
 
 ## 剪貼簿內容操作
@@ -149,7 +155,7 @@ ClipDesk 只會自動收集純文字。再次複製完全相同的文字時，�
 
 刪除分類前會顯示確認視窗，並告知內容將移到哪個分類。
 
-## 出勤通知
+## 出勤通知（僅完整版）
 
 切換到 `出勤通知` 分頁後，可設定：
 
@@ -172,10 +178,10 @@ ClipDesk 只會自動收集純文字。再次複製完全相同的文字時，�
 產生的內容格式如下：
 
 ```text
-2026/08/20 Luna Lin 10:00 打卡上班
-2026/08/20 Luna Lin 13:00 休息開始
-2026/08/20 Luna Lin 14:00 休息結束
-2026/08/20 Luna Lin 19:00 打卡下班
+08/20 Luna Lin 10:00 打卡上班
+08/20 Luna Lin 13:00 休息開始
+08/20 Luna Lin 14:00 休息結束
+08/20 Luna Lin 19:00 打卡下班
 ```
 
 實際日期會依使用當天自動變更。
@@ -243,7 +249,10 @@ ClipDesk 不需要帳號或雲端伺服器。發布檔與原始碼不包含任�
 
 ```text
 native/ClipDesk.cs          Windows 原生 WinForms 程式
-installer/ClipDesk.nsi      NSIS 安裝腳本
+assets/clipdesk.ico         Windows 多尺寸應用程式圖示
+assets/clipdesk-icon.png    圖示高解析度來源圖
+installer/ClipDesk.nsi      完整版 NSIS 安裝腳本
+installer/ClipDesk.Clipboard.nsi  純剪貼簿版 NSIS 安裝腳本
 build-native.ps1            一鍵建置腳本
 .github/workflows/          GitHub Actions 自動建置
 ```
@@ -267,8 +276,10 @@ build-native.ps1            一鍵建置腳本
 建置結果會放在 `dist`：
 
 ```text
-ClipDesk-Portable-1.2.0-x64.exe
-ClipDesk-Setup-1.2.0-x64.exe
+ClipDesk-Portable-1.3.0-x64.exe
+ClipDesk-Setup-1.3.0-x64.exe
+ClipDesk-Clipboard-Portable-1.3.0-x64.exe
+ClipDesk-Clipboard-Setup-1.3.0-x64.exe
 ```
 
 如果沒有安裝 NSIS，腳本仍會建立免安裝版，並略過安裝版。

@@ -15,11 +15,11 @@ using System.Windows.Forms;
 [assembly: AssemblyCompany("ClipDesk")]
 [assembly: AssemblyProduct("ClipDesk")]
 #if PURPLE_THEME
-[assembly: AssemblyVersion("1.9.0.0")]
-[assembly: AssemblyFileVersion("1.9.0.0")]
+[assembly: AssemblyVersion("1.10.0.0")]
+[assembly: AssemblyFileVersion("1.10.0.0")]
 #else
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
 #endif
 
 namespace ClipDeskNative {
@@ -109,8 +109,8 @@ namespace ClipDeskNative {
     Button clipsNavButton;
     Button attendanceNavButton;
     Button updateNavButton;
-    TextBox staffName;
-    TextBox workStart, restStart, restEnd, workEnd;
+    TextBox staffName = new TextBox();
+    TextBox workStart = new TextBox(), restStart = new TextBox(), restEnd = new TextBox(), workEnd = new TextBox();
     AppSettings settings = Defaults();
     string lastClipboard = "";
     string selectedCategory = "全部";
@@ -140,7 +140,12 @@ namespace ClipDeskNative {
 
     public MainForm() {
       dataFile = Path.Combine(dataDir, "data.json");
+      try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+#if CLIPBOARD_ONLY
+      Text = "ClipDesk 剪貼簿版";
+#else
       Text = "ClipDesk";
+#endif
       Width = 360;
       Height = 680;
       MinimumSize = new Size(300, 420);
@@ -168,7 +173,9 @@ namespace ClipDeskNative {
       RebuildCategoryTree();
       RefreshList();
       Shown += delegate {
+#if !CLIPBOARD_ONLY
         if (Environment.GetEnvironmentVariable("CLIPDESK_NATIVE_SCREENSHOT_TAB") == "attendance") tabs.SelectedIndex = 1;
+#endif
         UpdateNavigation();
         if (categoryTree.SelectedNode != null) categoryTree.SelectedNode.EnsureVisible();
         CaptureClipboard();
@@ -239,12 +246,15 @@ namespace ClipDeskNative {
     }
 
     void UpdateNavigation() {
-      if (clipsNavButton == null || attendanceNavButton == null) return;
+      if (clipsNavButton == null) return;
       bool clipsActive = tabs.SelectedIndex == 0;
       clipsNavButton.BackColor = clipsActive ? Accent : NavInactive;
       clipsNavButton.ForeColor = Color.White;
+#if !CLIPBOARD_ONLY
+      if (attendanceNavButton == null) return;
       attendanceNavButton.BackColor = clipsActive ? NavInactive : Accent;
       attendanceNavButton.ForeColor = Color.White;
+#endif
     }
 
     void UseDarkNativeTheme(Control control) {
@@ -294,11 +304,17 @@ namespace ClipDeskNative {
       nav.WrapContents = false;
       nav.BackColor = NavSurface;
       clipsNavButton = FlatButton("剪貼簿", delegate { tabs.SelectedIndex = 0; UpdateNavigation(); });
+#if !CLIPBOARD_ONLY
       attendanceNavButton = FlatButton("出勤通知", delegate { tabs.SelectedIndex = 1; UpdateNavigation(); });
+#endif
       clipsNavButton.MouseLeave += delegate { UpdateNavigation(); };
+#if !CLIPBOARD_ONLY
       attendanceNavButton.MouseLeave += delegate { UpdateNavigation(); };
+#endif
       nav.Controls.Add(clipsNavButton);
+#if !CLIPBOARD_ONLY
       nav.Controls.Add(attendanceNavButton);
+#endif
       ContextMenuStrip backupMenu = new ContextMenuStrip();
       backupMenu.Items.Add("匯出備份", null, delegate { ExportBackup(); });
       backupMenu.Items.Add("匯入備份", null, delegate { ImportBackup(); });
@@ -444,12 +460,14 @@ namespace ClipDeskNative {
       clipPage.Controls.Add(searchPanel);
       clipPage.Controls.Add(categoryPanel);
 
+      tabs.TabPages.Add(clipPage);
+#if !CLIPBOARD_ONLY
       TabPage attendancePage = new TabPage("出勤通知");
       attendancePage.BackColor = Bg;
       attendancePage.Padding = new Padding(8);
       BuildAttendance(attendancePage);
-      tabs.TabPages.Add(clipPage);
       tabs.TabPages.Add(attendancePage);
+#endif
       tabs.SelectedIndexChanged += delegate { UpdateNavigation(); };
       tabs.HandleCreated += delegate { tabs.SelectedIndex = 0; UpdateNavigation(); };
       UseDarkNativeTheme(clipList);
@@ -502,7 +520,11 @@ namespace ClipDeskNative {
       };
 
       Label title = new Label();
+#if CLIPBOARD_ONLY
+      title.Text = "◆  ClipDesk 剪貼簿版";
+#else
       title.Text = "◆  ClipDesk";
+#endif
       title.Dock = DockStyle.Fill;
       title.Padding = new Padding(9, 0, 0, 0);
       title.TextAlign = ContentAlignment.MiddleLeft;
@@ -866,7 +888,7 @@ namespace ClipDeskNative {
       updateNotified = true;
       if (updateTrayIcon == null) {
         updateTrayIcon = new NotifyIcon();
-        updateTrayIcon.Icon = SystemIcons.Application;
+        updateTrayIcon.Icon = Icon ?? SystemIcons.Application;
         updateTrayIcon.Text = "ClipDesk 更新通知";
         updateTrayIcon.BalloonTipClicked += delegate { OpenUpdatePage(); };
         updateTrayIcon.Click += delegate { Show(); Activate(); };
@@ -1322,7 +1344,7 @@ namespace ClipDeskNative {
     }
 
     string AttendanceText(int action) {
-      string prefix = DateTime.Today.ToString("yyyy/MM/dd") + " " + (String.IsNullOrWhiteSpace(staffName.Text) ? "姓名" : staffName.Text.Trim());
+      string prefix = DateTime.Today.ToString("MM/dd") + " " + (String.IsNullOrWhiteSpace(staffName.Text) ? "姓名" : staffName.Text.Trim());
       if (action == 0) return prefix + " " + TimeValue(workStart) + " 打卡上班";
       if (action == 1) return prefix + " " + TimeValue(restStart) + " 休息開始";
       if (action == 2) return prefix + " " + TimeValue(restEnd) + " 休息結束";
