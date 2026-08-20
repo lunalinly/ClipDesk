@@ -1,0 +1,31 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis --no-progress -y
+
+      - name: Build ClipDesk
+        shell: pwsh
+        run: .\build-native.ps1
+
+      - name: Upload Windows builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClipDesk-1.0.0-windows-x64
+          path: |
+            dist/ClipDesk-Portable-1.0.0-x64.exe
+            dist/ClipDesk-Setup-1.0.0-x64.exe
+          if-no-files-found: error

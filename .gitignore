@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+open-source/
+*.log
+*.user
+*.suo
+*.json.bak
+*.backup.json
+data.json
+.DS_Store
+installer/ClipDesk.Personal.nsi
