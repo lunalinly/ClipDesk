@@ -1,0 +1,3 @@
+cca54c6ed66a1196bb000a828e58aac9dc78e876203c6c6e6ec4e2de34c46496  ClipDesk-Portable-1.7.0-x64.zip
+e913dc9bd4aa0db5e4e1475c7b959c1310b869a7f3c480d43bf2ee4c4a8c3fe8  ClipDesk-Setup-1.7.0-x64.exe
+573e0decf837a0b357750d6f5a0970f7ef4afeaf6b6608552d40b8e43aa304d4  ClipDesk-Setup-1.7.0-x64.zip
