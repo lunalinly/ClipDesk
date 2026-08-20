@@ -9,20 +9,22 @@ ClipDesk 是一款開源、輕量、以本機資料為主的 Windows 剪貼簿�
 - 自動記錄新複製的文字，未整理內容放入「未分類」
 - 固定主要分類：開頭、中間、結尾、未分類、其他
 - 支援不限層數子分類，預設收合並可逐層展開
+- 子分類可在同一母分類內上移／下移，自訂順序會永久保存
 - 搜尋、釘選、編輯、另存一份、刪除與右鍵操作
 - 雙擊內容可切回上一個視窗並自動貼上
 - 滑鼠停留在被截斷的內容或分類時顯示完整文字
 - 藍黑無邊框介面、深色捲軸與自繪分類展開按鈕
 - 視窗置頂與小型視窗模式
 - 上下班與休息通知，日期自動使用今天日期
-- JSON 備份匯出與匯入，包含剪貼簿、分類及出勤設定
+- JSON 備份匯出與匯入，包含剪貼簿、分類、排序及出勤設定
+- 啟動時背景檢查 GitHub Releases，有新版時顯示 Windows 通知與下載按鈕
 
 ## 下載
 
 請到 GitHub Releases 下載：
 
-- `ClipDesk-Portable-1.0.1-x64.zip`：免安裝版
-- `ClipDesk-Setup-1.0.1-x64.exe`：安裝版
+- `ClipDesk-Portable-1.1.0-x64.zip`：免安裝版
+- `ClipDesk-Setup-1.1.0-x64.exe`：安裝版
 
 支援 64 位元 Windows。若目標程式以系統管理員身分執行，ClipDesk 也必須以系統管理員身分執行，才能自動貼上。
 
@@ -54,8 +56,8 @@ build-native.ps1            一鍵建置腳本
 建置結果會放在 `dist`：
 
 ```text
-ClipDesk-Portable-1.0.1-x64.exe
-ClipDesk-Setup-1.0.1-x64.exe
+ClipDesk-Portable-1.1.0-x64.exe
+ClipDesk-Setup-1.1.0-x64.exe
 ```
 
 如果沒有安裝 NSIS，腳本仍會成功建立免安裝版，並略過安裝版。

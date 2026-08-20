@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Diagnostics;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Web.Script.Serialization;
@@ -12,8 +14,13 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Lightweight Windows clipboard manager")]
 [assembly: AssemblyCompany("ClipDesk")]
 [assembly: AssemblyProduct("ClipDesk")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
+#if PURPLE_THEME
+[assembly: AssemblyVersion("1.8.0.0")]
+[assembly: AssemblyFileVersion("1.8.0.0")]
+#else
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
+#endif
 
 namespace ClipDeskNative {
   public class ClipItem {
@@ -93,6 +100,7 @@ namespace ClipDeskNative {
     readonly Label countLabel = new Label();
     readonly Timer clipboardTimer = new Timer();
     readonly Timer focusTimer = new Timer();
+    readonly Timer updateTimer = new Timer();
     readonly CleanButton topButton = new CleanButton();
     readonly TabControl tabs = new TabControl();
     readonly ToolTip hoverTip = new ToolTip();
@@ -100,12 +108,18 @@ namespace ClipDeskNative {
     TreeNode hoverCategoryNode;
     Button clipsNavButton;
     Button attendanceNavButton;
+    Button updateNavButton;
     TextBox staffName;
     TextBox workStart, restStart, restEnd, workEnd;
     AppSettings settings = Defaults();
     string lastClipboard = "";
     string selectedCategory = "全部";
     bool rebuildingTree = false;
+    bool updateCheckRunning = false;
+    bool updateNotified = false;
+    string updateReleaseUrl = "https://github.com/lunalinly/ClipDesk/releases/latest";
+    WebClient updateClient;
+    NotifyIcon updateTrayIcon;
     IntPtr previousWindow = IntPtr.Zero;
 
     [DllImport("user32.dll")]
@@ -173,6 +187,12 @@ namespace ClipDeskNative {
           screenshotTimer.Start();
           return;
         }
+#if PUBLIC_RELEASE
+        CheckForUpdates(false);
+        updateTimer.Interval = 6 * 60 * 60 * 1000;
+        updateTimer.Tick += delegate { CheckForUpdates(false); };
+        updateTimer.Start();
+#endif
         IntPtr fallback = GetWindow(Handle, GW_HWNDNEXT);
         if (fallback != IntPtr.Zero && fallback != Handle) previousWindow = fallback;
         focusTimer.Interval = 150;
@@ -182,7 +202,14 @@ namespace ClipDeskNative {
         clipboardTimer.Tick += delegate { CaptureClipboard(); };
         clipboardTimer.Start();
       };
-      FormClosing += delegate { focusTimer.Stop(); clipboardTimer.Stop(); SaveData(); };
+      FormClosing += delegate {
+        focusTimer.Stop();
+        clipboardTimer.Stop();
+        updateTimer.Stop();
+        if (updateClient != null) updateClient.Dispose();
+        if (updateTrayIcon != null) { updateTrayIcon.Visible = false; updateTrayIcon.Dispose(); }
+        SaveData();
+      };
     }
 
     static AppSettings Defaults() {
@@ -275,9 +302,18 @@ namespace ClipDeskNative {
       ContextMenuStrip backupMenu = new ContextMenuStrip();
       backupMenu.Items.Add("匯出備份", null, delegate { ExportBackup(); });
       backupMenu.Items.Add("匯入備份", null, delegate { ImportBackup(); });
+#if PUBLIC_RELEASE
+      backupMenu.Items.Add(new ToolStripSeparator());
+      backupMenu.Items.Add("檢查更新", null, delegate { CheckForUpdates(true); });
+#endif
       Button backupButton = null;
       backupButton = FlatButton("備份", delegate { backupMenu.Show(backupButton, new Point(0, backupButton.Height)); });
       nav.Controls.Add(backupButton);
+#if PUBLIC_RELEASE
+      updateNavButton = FlatButton("有新版", delegate { OpenUpdatePage(); });
+      updateNavButton.Visible = false;
+      nav.Controls.Add(updateNavButton);
+#endif
 
       Panel tabHost = new Panel();
       tabHost.Dock = DockStyle.Fill;
@@ -381,7 +417,14 @@ namespace ClipDeskNative {
       categoryMenu.Items.Add("重新命名", null, delegate { RenameCategory(); });
       categoryMenu.Items.Add("刪除分類", null, delegate { DeleteCategory(); });
       categoryMenu.Items.Add(new ToolStripSeparator());
+      ToolStripItem moveUpItem = categoryMenu.Items.Add("上移", null, delegate { MoveCategory(-1); });
+      ToolStripItem moveDownItem = categoryMenu.Items.Add("下移", null, delegate { MoveCategory(1); });
+      categoryMenu.Items.Add(new ToolStripSeparator());
       categoryMenu.Items.Add("清空未分類", null, delegate { ClearUncategorized(); });
+      categoryMenu.Opening += delegate {
+        moveUpItem.Enabled = CanMoveCategory(-1);
+        moveDownItem.Enabled = CanMoveCategory(1);
+      };
       categoryTree.ContextMenuStrip = categoryMenu;
       FlowLayoutPanel categoryActions = new FlowLayoutPanel();
       categoryActions.Dock = DockStyle.Bottom;
@@ -390,6 +433,8 @@ namespace ClipDeskNative {
       categoryActions.WrapContents = true;
       categoryActions.Controls.Add(FlatButton("＋子分類", delegate { AddCategory(); }));
       categoryActions.Controls.Add(FlatButton("改名", delegate { RenameCategory(); }));
+      categoryActions.Controls.Add(FlatButton("↑", delegate { MoveCategory(-1); }));
+      categoryActions.Controls.Add(FlatButton("↓", delegate { MoveCategory(1); }));
       categoryActions.Controls.Add(FlatButton("刪除分類", delegate { DeleteCategory(); }));
       categoryActions.Controls.Add(FlatButton("清空未分類", delegate { ClearUncategorized(); }));
       categoryPanel.Controls.Add(categoryTree);
@@ -524,7 +569,7 @@ namespace ClipDeskNative {
         categoryTree.Nodes.Add(node);
         map[root] = node;
       }
-      foreach (string path in categories.Distinct().OrderBy(x => x.Split('/').Length).ThenBy(x => x)) {
+      foreach (string path in categories.Distinct()) {
         if (IsFixedCategory(path)) continue;
         string[] parts = path.Split('/');
         if (parts.Length < 2 || !map.ContainsKey(parts[0])) continue;
@@ -559,6 +604,47 @@ namespace ClipDeskNative {
       return null;
     }
 
+    List<string> DirectCategoryChildren(string parent) {
+      string prefix = parent + "/";
+      return categories.Distinct().Where(path => {
+        if (String.IsNullOrWhiteSpace(path) || !path.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        return path.Substring(prefix.Length).IndexOf('/') < 0;
+      }).ToList();
+    }
+
+    bool CanMoveCategory(int direction) {
+      string path = selectedCategory;
+      if (path == "全部" || IsFixedCategory(path) || String.IsNullOrWhiteSpace(path)) return false;
+      int separator = path.LastIndexOf('/');
+      if (separator <= 0) return false;
+      string parent = path.Substring(0, separator);
+      List<string> siblings = DirectCategoryChildren(parent);
+      int index = siblings.IndexOf(path);
+      int target = index + direction;
+      return index >= 0 && target >= 0 && target < siblings.Count;
+    }
+
+    void MoveCategory(int direction) {
+      if (!CanMoveCategory(direction)) return;
+      string path = selectedCategory;
+      string parent = path.Substring(0, path.LastIndexOf('/'));
+      List<string> siblings = DirectCategoryChildren(parent);
+      int siblingIndex = siblings.IndexOf(path);
+      string targetPath = siblings[siblingIndex + direction];
+      int currentIndex = categories.IndexOf(path);
+      int targetIndex = categories.IndexOf(targetPath);
+      if (currentIndex < 0 || targetIndex < 0) return;
+      categories[currentIndex] = targetPath;
+      categories[targetIndex] = path;
+      SaveData();
+      RebuildCategoryTree();
+      TreeNode selected = FindCategoryNode(categoryTree.Nodes, path);
+      if (selected != null) {
+        categoryTree.SelectedNode = selected;
+        selected.EnsureVisible();
+      }
+      RefreshList();
+    }
     string PromptText(string title, string label, string initial) {
       using (Form dialog = new Form()) {
         dialog.Text = title;
@@ -692,6 +778,89 @@ namespace ClipDeskNative {
       return path == selectedCategory || path.StartsWith(selectedCategory + "/");
     }
 
+    void CheckForUpdates(bool manual) {
+      if (updateCheckRunning) {
+        if (manual) MessageBox.Show(this, "正在檢查更新，請稍候。", "ClipDesk");
+        return;
+      }
+      updateCheckRunning = true;
+      try {
+        ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
+        updateClient = new WebClient();
+        updateClient.Headers[HttpRequestHeader.UserAgent] = "ClipDesk-Windows";
+        updateClient.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
+        updateClient.DownloadStringCompleted += delegate(object sender, DownloadStringCompletedEventArgs e) {
+          updateCheckRunning = false;
+          WebClient completedClient = updateClient;
+          updateClient = null;
+          if (completedClient != null) completedClient.Dispose();
+          if (IsDisposed || Disposing) return;
+          if (e.Cancelled || e.Error != null) {
+            if (manual) MessageBox.Show(this, "目前無法連線到 GitHub 檢查更新，請稍後再試。", "ClipDesk", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+          }
+          try {
+            Dictionary<string, object> release = serializer.Deserialize<Dictionary<string, object>>(e.Result);
+            string tag = release.ContainsKey("tag_name") ? Convert.ToString(release["tag_name"]) : "";
+            string url = release.ContainsKey("html_url") ? Convert.ToString(release["html_url"]) : updateReleaseUrl;
+            string numericTag = (tag ?? "").Trim().TrimStart('v', 'V');
+            int suffix = numericTag.IndexOf('-');
+            if (suffix >= 0) numericTag = numericTag.Substring(0, suffix);
+            Version latestVersion;
+            Version currentVersion = Assembly.GetExecutingAssembly().GetName().Version;
+            if (!Version.TryParse(numericTag, out latestVersion)) throw new InvalidDataException("GitHub 版本格式無法辨識。");
+            if (latestVersion > currentVersion) {
+              updateReleaseUrl = String.IsNullOrWhiteSpace(url) ? updateReleaseUrl : url;
+              ShowUpdateAvailable(tag, manual);
+            } else if (manual) {
+              MessageBox.Show(this, "目前已是最新版（v" + currentVersion.ToString(3) + "）。", "ClipDesk", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+          } catch (Exception ex) {
+            if (manual) MessageBox.Show(this, "檢查更新失敗：" + ex.Message, "ClipDesk", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+          }
+        };
+        updateClient.DownloadStringAsync(new Uri("https://api.github.com/repos/lunalinly/ClipDesk/releases/latest"));
+      } catch (Exception ex) {
+        updateCheckRunning = false;
+        if (updateClient != null) { updateClient.Dispose(); updateClient = null; }
+        if (manual) MessageBox.Show(this, "檢查更新失敗：" + ex.Message, "ClipDesk", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+      }
+    }
+
+    void ShowUpdateAvailable(string tag, bool manual) {
+      string shownTag = String.IsNullOrWhiteSpace(tag) ? "新版" : tag;
+      updateNavButton.Text = "新版 " + shownTag;
+      updateNavButton.Width = Math.Max(72, TextRenderer.MeasureText(updateNavButton.Text, updateNavButton.Font).Width + 22);
+      updateNavButton.BackColor = Accent;
+      updateNavButton.Visible = true;
+      if (manual) {
+        if (MessageBox.Show(this, "ClipDesk " + shownTag + " 已發布，要前往下載頁面嗎？", "發現新版本", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+          OpenUpdatePage();
+        return;
+      }
+      if (updateNotified) return;
+      updateNotified = true;
+      if (updateTrayIcon == null) {
+        updateTrayIcon = new NotifyIcon();
+        updateTrayIcon.Icon = SystemIcons.Application;
+        updateTrayIcon.Text = "ClipDesk 更新通知";
+        updateTrayIcon.BalloonTipClicked += delegate { OpenUpdatePage(); };
+        updateTrayIcon.Click += delegate { Show(); Activate(); };
+      }
+      updateTrayIcon.Visible = true;
+      updateTrayIcon.BalloonTipTitle = "ClipDesk 有新版本";
+      updateTrayIcon.BalloonTipText = shownTag + " 已發布，點一下前往下載。";
+      updateTrayIcon.BalloonTipIcon = ToolTipIcon.Info;
+      updateTrayIcon.ShowBalloonTip(8000);
+    }
+
+    void OpenUpdatePage() {
+      try {
+        Process.Start(new ProcessStartInfo(updateReleaseUrl) { UseShellExecute = true });
+      } catch (Exception ex) {
+        MessageBox.Show(this, "無法開啟下載頁面：" + ex.Message, "ClipDesk", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+      }
+    }
     void BuildAttendance(Control parent) {
       Panel page = new Panel();
       page.Dock = DockStyle.Fill;
@@ -1057,7 +1226,7 @@ namespace ClipDeskNative {
         category.DropDownStyle = ComboBoxStyle.DropDownList;
         category.BackColor = Row;
         category.ForeColor = TextColor;
-        foreach (string path in categories.Distinct().OrderBy(x => x)) category.Items.Add(path);
+        foreach (string path in categories.Distinct()) category.Items.Add(path);
         string currentCategory = item == null || String.IsNullOrWhiteSpace(item.CategoryPath) ? "未分類" : item.CategoryPath;
         category.SelectedItem = currentCategory;
         if (category.SelectedIndex < 0) category.SelectedItem = "未分類";
